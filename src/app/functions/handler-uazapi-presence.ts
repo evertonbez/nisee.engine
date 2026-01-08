@@ -3,7 +3,7 @@ import { redisThreadManager } from "../thread/redis-thread";
 
 interface PresencePayload {
   agentId: string;
-  sender: string;
+  lid: string; // LID do WhatsApp (vem em body.event.Sender)
   state: string; // "composing" | "recording" | "paused"
   token: string;
 }
@@ -12,20 +12,21 @@ export async function handlerUazapiPresence(
   payload: PresencePayload,
 ): Promise<{ message: string } | null> {
   try {
-    const { agentId, sender, state } = payload;
+    const { agentId, lid, state } = payload;
 
-    // Verifica se a thread existe e obtém os dados
-    const thread = await redisThreadManager.getThread(agentId, sender);
+    console.log(
+      `Received presence event for agentId: ${agentId}, lid: ${lid}, state: ${state}`,
+    );
 
-    if (!thread) {
+    // Busca o threadId através do LID
+    const threadId = await redisThreadManager.getThreadIdByLid(agentId, lid);
+
+    if (!threadId) {
       console.log(
-        `Thread not found for agentId: ${agentId}, sender: ${sender}. Ignoring presence event.`,
+        `Thread not found for agentId: ${agentId}, lid: ${lid}. Ignoring presence event.`,
       );
       return { message: "Thread not found, presence event ignored" };
     }
-
-    // Obtém o threadId da thread existente
-    const threadId = thread.threadId;
 
     // Mapeia o estado do WhatsApp para o status de atividade do buffer
     if (state === "composing") {

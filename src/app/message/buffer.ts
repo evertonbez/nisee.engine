@@ -237,8 +237,8 @@ export class RedisBufferMessage extends EventEmitter {
     threadId: string,
     message: BufferedMessage,
     metadata?: Metadata,
+    ttlMs: number = 3000,
   ): Promise<void> {
-    const defaultTtlMs = 3000;
     const bufferKey = this.getBufferKey(threadId);
     const bufferDataKey = this.getBufferDataKey(threadId);
     const bufferMetadataKey = this.getBufferMetadataKey(threadId);
@@ -248,7 +248,7 @@ export class RedisBufferMessage extends EventEmitter {
       const isNewBuffer = !existingBuffer;
 
       const bufferData: BufferData = {
-        expiresAt: Date.now() + defaultTtlMs,
+        expiresAt: Date.now() + ttlMs,
         messages: isNewBuffer
           ? [message]
           : [...existingBuffer.messages, message],
@@ -262,7 +262,7 @@ export class RedisBufferMessage extends EventEmitter {
         3600,
       );
 
-      const ttlSeconds = Math.ceil(defaultTtlMs / 1000) + 2;
+      const ttlSeconds = Math.ceil(ttlMs / 1000) + 2;
 
       await this.redis.setex(bufferKey, ttlSeconds, threadId);
 

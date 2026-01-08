@@ -16,7 +16,9 @@ export async function getAgentById(id: string) {
         return ok(null);
       }
 
-      await setCacheJSON(id, result);
+      await setCacheJSON(id, result, {
+        ttl: 60 * 60 * 4,
+      });
       return ok(result);
     }
 

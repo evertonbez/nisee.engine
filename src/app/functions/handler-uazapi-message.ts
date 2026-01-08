@@ -8,6 +8,7 @@ import { redisThreadManager } from "../thread/redis-thread";
 interface HandlerMessageUazapiInput {
   agentId: string;
   sender: string;
+  lid?: string; // LID do WhatsApp para mapeamento
   chat: {
     name: string;
     picture: string;
@@ -90,13 +91,17 @@ export const handlerUazapiMessage = async (
     };
   }
 
-  const { message, token } = payload;
+  const { message, token, lid } = payload;
 
-  // Get or create thread com TTL de 4 horas
+  // Get or create thread com TTL de 4 horas e salva mapeamento LID
   const threadId = await redisThreadManager.getOrCreateThread(
     payload.agentId,
     payload.sender,
+    lid,
   );
+
+  // Define status como "paused" imediatamente ao receber mensagem
+  await bufferMessageService.setUserActivityStatus(threadId, "paused");
 
   bufferMessageService.addMessage(
     threadId,
@@ -113,6 +118,7 @@ export const handlerUazapiMessage = async (
         token,
       },
     },
+    2000,
   );
 
   return {

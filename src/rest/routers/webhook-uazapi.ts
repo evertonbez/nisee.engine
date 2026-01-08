@@ -53,9 +53,12 @@ app.openapi(
     const { agentId } = c.req.valid("param");
     const body = c.req.valid("json");
 
+    const lid = body.message.sender_lid;
+
     const payload = {
       agentId,
       sender: body.message.sender,
+      lid: lid, // LID para mapeamento
       chat: {
         name: body.chat.name,
         picture: body.chat.image,
@@ -131,9 +134,10 @@ app.openapi(
     const { agentId } = c.req.valid("param");
     const body = c.req.valid("json");
 
+    // No evento de presence, o Sender é o LID do WhatsApp
     const payload = {
       agentId,
-      sender: body.event.Sender,
+      lid: body.event.Sender, // LID para buscar thread
       state: body.event.State,
       token: body.token,
     };
