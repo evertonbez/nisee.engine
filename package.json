@@ -1,0 +1,42 @@
+{
+  "name": "nisee.engine",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "mastra:dev": "mastra dev",
+    "mastra:build": "mastra build",
+    "mastra:start": "mastra start"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.20.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "@hono/zod-openapi": "^1.2.0",
+    "@mastra/core": "^0.24.9",
+    "@mastra/evals": "^0.14.4",
+    "@mastra/libsql": "^0.16.4",
+    "@mastra/loggers": "^0.10.19",
+    "@mastra/memory": "^0.15.13",
+    "@mastra/pg": "^0.17.10",
+    "@scalar/hono-api-reference": "^0.9.30",
+    "drizzle-orm": "^0.45.1",
+    "ioredis": "^5.8.2",
+    "nanoid": "^5.1.6",
+    "neverthrow": "^8.2.0",
+    "uuidv7": "^1.1.0",
+    "zod": "^4.3.4"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "drizzle-kit": "^0.31.8",
+    "mastra": "^0.18.9",
+    "typescript": "^5.9.3"
+  }
+}

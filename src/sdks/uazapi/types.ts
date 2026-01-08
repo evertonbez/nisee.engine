@@ -1,0 +1,46 @@
+export type SendTextMessageRequest = {
+  number: string;
+  text: string;
+  linkPreview?: boolean;
+  linkPreviewTitle?: boolean;
+  linkPreviewDescription?: string;
+  linkPreviewImage?: string;
+  linkPreviewLarge?: boolean;
+  replyid?: string;
+  mentions?: string;
+  readchat?: boolean;
+  readmessages?: boolean;
+  delay?: number;
+  forward?: boolean;
+};
+
+export type UazapiMessage = {
+  buttonOrListid: string;
+  chatid: string;
+  content: any;
+  convertOptions: string;
+  edited: string;
+  fromMe: boolean;
+  groupName: string;
+  id: string;
+  isGroup: boolean;
+  mediaType: string;
+  messageTimestamp: number;
+  messageType: string;
+  messageid: string;
+  owner: string;
+  quoted: string;
+  reaction: string;
+  sender: string;
+  senderName: string;
+  sender_lid: string;
+  sender_pn: string;
+  source: string;
+  status: string;
+  text: string;
+  track_id: string;
+  track_source: string;
+  type: string;
+  vote: string;
+  wasSentByApi: boolean;
+};
