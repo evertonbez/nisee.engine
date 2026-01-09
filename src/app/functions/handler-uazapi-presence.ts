@@ -1,5 +1,8 @@
 import { bufferMessageService } from "../message/buffer";
 import { redisThreadManager } from "../thread/redis-thread";
+import { baseLogger } from "../../observability/logger";
+
+const logger = baseLogger.child({ component: "HandlerUazapiPresence" });
 
 interface PresencePayload {
   agentId: string;
@@ -14,42 +17,50 @@ export async function handlerUazapiPresence(
   try {
     const { agentId, lid, state } = payload;
 
-    console.log(
-      `Received presence event for agentId: ${agentId}, lid: ${lid}, state: ${state}`,
-    );
+    logger.info({ agentId, lid, state }, "Processing presence event");
 
     // Busca o threadId através do LID
     const threadId = await redisThreadManager.getThreadIdByLid(agentId, lid);
 
     if (!threadId) {
-      console.log(
-        `Thread not found for agentId: ${agentId}, lid: ${lid}. Ignoring presence event.`,
+      logger.debug(
+        { agentId, lid, state },
+        "Thread not found, ignoring presence event",
       );
       return { message: "Thread not found, presence event ignored" };
     }
+
+    logger.debug(
+      { agentId, lid, threadId, state },
+      "Thread found for presence event",
+    );
 
     // Mapeia o estado do WhatsApp para o status de atividade do buffer
     if (state === "composing") {
       // Usuário está digitando - trava o buffer
       await bufferMessageService.setUserActivityStatus(threadId, "typing");
-      console.log(`Buffer locked for thread ${threadId} - user is typing`);
+      logger.info({ threadId, agentId, lid }, "Buffer locked - user is typing");
     } else if (state === "recording") {
       // Usuário está gravando áudio - trava o buffer
       await bufferMessageService.setUserActivityStatus(threadId, "recording");
-      console.log(`Buffer locked for thread ${threadId} - user is recording`);
+      logger.info(
+        { threadId, agentId, lid },
+        "Buffer locked - user is recording",
+      );
     } else if (state === "paused" || state === "available") {
       // Usuário parou de digitar/gravar - reativa o buffer com delay de 3 segundos
-      setTimeout(async () => {
-        await bufferMessageService.setUserActivityStatus(threadId, "paused");
-        console.log(
-          `Buffer unlocked for thread ${threadId} after 3s delay - user paused`,
-        );
-      }, 3000);
+
+      await bufferMessageService.setUserActivityStatus(threadId, "paused");
+      logger.info({ threadId, agentId, lid }, "Buffer unlocked - user paused");
     }
 
+    logger.info(
+      { agentId, lid, threadId, state },
+      "Presence event processed successfully",
+    );
     return { message: "Presence event processed successfully" };
   } catch (error) {
-    console.error("Error processing presence event", error);
+    logger.error({ error, payload }, "Error processing presence event");
     return null;
   }
 }

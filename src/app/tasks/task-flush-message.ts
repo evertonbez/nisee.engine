@@ -2,20 +2,64 @@ import { RuntimeContext } from "@mastra/core/runtime-context";
 import { AgentRuntime, mainAgent } from "../../mastra/agents/main-agent";
 import { FlushEvent } from "../message/buffer";
 import { UazapiApi } from "../../sdks/uazapi/uazapi-api";
+import { baseLogger } from "../../observability/logger";
+
+const logger = baseLogger.child({ component: "TaskFlushMessage" });
 
 export const taskFlushMessage = async (payload: FlushEvent): Promise<any> => {
+  logger.info(
+    {
+      threadId: payload.threadId,
+      messageCount: payload.messageCount,
+    },
+    "Starting flush message task",
+  );
+
   const { agent, contact, uazapi } = payload.metadata ?? {};
 
   if (!agent || !contact || !uazapi) {
+    logger.warn(
+      {
+        threadId: payload.threadId,
+        hasAgent: !!agent,
+        hasContact: !!contact,
+        hasUazapi: !!uazapi,
+      },
+      "Missing metadata, skipping flush",
+    );
     return;
   }
 
+  logger.debug(
+    {
+      threadId: payload.threadId,
+      agentId: agent.id,
+      agentName: agent.name,
+      contactId: contact.id,
+      contactPhone: contact.phone,
+    },
+    "Metadata loaded",
+  );
+
   const messagesJoined = payload.messages
+    .filter((message) => !!message.text)
     .map((message) => message.text)
     .join("\n");
 
+  logger.debug(
+    {
+      threadId: payload.threadId,
+      messagesCount: payload.messages.length,
+      textLength: messagesJoined.length,
+    },
+    "Messages joined for processing",
+  );
+
   if (!contact.phone) {
-    console.error("No phone number found for contact");
+    logger.error(
+      { threadId: payload.threadId, contactId: contact.id },
+      "No phone number found for contact",
+    );
     return;
   }
 
@@ -27,6 +71,15 @@ export const taskFlushMessage = async (payload: FlushEvent): Promise<any> => {
     agent.systemPrompt || "You are a helpful assistant",
   );
 
+  logger.debug(
+    {
+      threadId: payload.threadId,
+      model: agent.llm?.model,
+      hasSystemPrompt: !!agent.systemPrompt,
+    },
+    "Generating AI response",
+  );
+
   const response = await mainAgent.generate(messagesJoined, {
     runtimeContext,
     memory: {
@@ -34,6 +87,14 @@ export const taskFlushMessage = async (payload: FlushEvent): Promise<any> => {
       thread: payload.threadId,
     },
   });
+
+  logger.info(
+    {
+      threadId: payload.threadId,
+      responseLength: response.text.length,
+    },
+    "AI response generated",
+  );
 
   const uazapiApi = new UazapiApi({
     baseUrl: process.env.UAZAPI_BASE_URL!,
@@ -49,10 +110,29 @@ export const taskFlushMessage = async (payload: FlushEvent): Promise<any> => {
     readmessages: false,
   };
 
+  logger.debug(
+    {
+      threadId: payload.threadId,
+      contactPhone: contact.phone,
+      messageLength: response.text.length,
+      delay: 1500,
+    },
+    "Sending message via Uazapi",
+  );
+
   await uazapiApi.sendTextMessage({
     ...sendMessagePayload,
     text: response.text,
   });
+
+  logger.info(
+    {
+      threadId: payload.threadId,
+      contactPhone: contact.phone,
+      responseLength: response.text.length,
+    },
+    "Message sent successfully",
+  );
 
   return response;
 };

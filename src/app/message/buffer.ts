@@ -2,6 +2,9 @@ import { EventEmitter } from "node:events";
 import { Redis } from "ioredis";
 import { redisConnection } from "../cache/redis";
 import { Agent, Contact } from "../../db/schema";
+import { baseLogger } from "../../observability/logger";
+
+const logger = baseLogger.child({ component: "RedisBufferMessage" });
 
 interface BufferedMessage {
   messageId: string;
@@ -54,7 +57,7 @@ export class RedisBufferMessage extends EventEmitter {
     this.redis = redis;
     this.subscriber = redis.duplicate();
     this.expirySubscriber = redis.duplicate();
-    console.log("RedisBufferMessage initialized");
+    logger.info("RedisBufferMessage initialized");
 
     this.setupSubscriber();
     this.setupExpiryNotifications();
@@ -76,14 +79,16 @@ export class RedisBufferMessage extends EventEmitter {
       await this.expirySubscriber.psubscribe(expiryPattern);
 
       this.expirySubscriber.on("pmessage", async (_pattern, _channel, key) => {
-        console.log("expiry notification received for", key);
+        logger.debug({ key }, "Expiry notification received");
         if (key.startsWith(this.BUFFER_KEY_PREFIX)) {
           const threadId = key.replace(this.BUFFER_KEY_PREFIX, "");
+          logger.debug({ threadId }, "Publishing flush for expired buffer");
           await this.redis.publish(this.getChannelName(threadId), "flush");
         }
       });
-    } catch {
-      console.error(
+    } catch (error) {
+      logger.error(
+        { error },
         "Failed to setup expiry notifications, falling back to polling only",
       );
     }
@@ -135,10 +140,7 @@ export class RedisBufferMessage extends EventEmitter {
     try {
       return JSON.parse(data);
     } catch (error) {
-      console.warn(
-        { component: "RedisBufferMessage", threadId, error },
-        "Failed to parse metadata",
-      );
+      logger.warn({ threadId, error }, "Failed to parse metadata");
       return null;
     }
   }
@@ -160,9 +162,12 @@ export class RedisBufferMessage extends EventEmitter {
   }
 
   private async handleFlushNotification(threadId: string): Promise<void> {
+    logger.debug({ threadId }, "Handling flush notification");
+
     const lockAcquired = await this.acquireLock(threadId);
 
     if (!lockAcquired) {
+      logger.debug({ threadId }, "Could not acquire lock, skipping flush");
       return;
     }
 
@@ -174,7 +179,7 @@ export class RedisBufferMessage extends EventEmitter {
   }
 
   private async flush(threadId: string): Promise<void> {
-    console.log("flushing thread", threadId);
+    logger.info({ threadId }, "Starting buffer flush");
     const bufferKey = this.getBufferKey(threadId);
     const bufferDataKey = this.getBufferDataKey(threadId);
     const activityStatusKey = this.getActivityStatusKey(threadId);
@@ -188,10 +193,12 @@ export class RedisBufferMessage extends EventEmitter {
       ]);
 
       if (!bufferData) {
+        logger.debug({ threadId }, "No buffer data found, skipping flush");
         return;
       }
 
       if (bufferData.messages.length === 0) {
+        logger.debug({ threadId }, "Buffer is empty, skipping flush");
         return;
       }
 
@@ -201,8 +208,13 @@ export class RedisBufferMessage extends EventEmitter {
         activityStatus === "typing" ||
         activityStatus === "recording"
       ) {
-        console.log(
-          `Buffer flush paused for thread ${threadId} - user is ${activityStatus || "active"}`,
+        logger.info(
+          {
+            threadId,
+            activityStatus,
+            awaitingUserInput: bufferData.awaitingUserInput,
+          },
+          "Buffer flush paused - user is active",
         );
 
         // Renova o TTL do buffer para manter as mensagens
@@ -220,6 +232,11 @@ export class RedisBufferMessage extends EventEmitter {
         metadata: bufferMetadata,
       };
 
+      logger.info(
+        { threadId, messageCount: bufferData.messages.length },
+        "Emitting flush event",
+      );
+
       this.emit("flush", flushEvent);
 
       await this.redis.del(
@@ -228,8 +245,10 @@ export class RedisBufferMessage extends EventEmitter {
         activityStatusKey,
         bufferMetadataKey,
       );
-    } catch {
-      console.log("error");
+
+      logger.debug({ threadId }, "Buffer cleaned after flush");
+    } catch (error) {
+      logger.error({ threadId, error }, "Error during flush");
     }
   }
 
@@ -239,6 +258,16 @@ export class RedisBufferMessage extends EventEmitter {
     metadata?: Metadata,
     ttlMs: number = 3000,
   ): Promise<void> {
+    logger.debug(
+      {
+        threadId,
+        messageId: message.messageId,
+        mediaType: message.mediaType,
+        ttlMs,
+      },
+      "Adding message to buffer",
+    );
+
     const bufferKey = this.getBufferKey(threadId);
     const bufferDataKey = this.getBufferDataKey(threadId);
     const bufferMetadataKey = this.getBufferMetadataKey(threadId);
@@ -268,10 +297,21 @@ export class RedisBufferMessage extends EventEmitter {
 
       if (isNewBuffer && metadata) {
         await this.redis.set(bufferMetadataKey, JSON.stringify(metadata));
+        logger.debug({ threadId }, "New buffer created with metadata");
       }
+
+      logger.info(
+        {
+          threadId,
+          messageId: message.messageId,
+          totalMessages: bufferData.messages.length,
+          ttlSeconds,
+        },
+        "Message added to buffer",
+      );
     } catch (error) {
-      console.error(
-        { component: "RedisBufferMessage", threadId, error },
+      logger.error(
+        { threadId, messageId: message.messageId, error },
         "Failed to add message to buffer",
       );
       throw error;
@@ -286,6 +326,8 @@ export class RedisBufferMessage extends EventEmitter {
     threadId: string,
     status: UserActivityStatus,
   ): Promise<void> {
+    logger.debug({ threadId, status }, "Setting user activity status");
+
     const activityStatusKey = this.getActivityStatusKey(threadId);
     const bufferDataKey = this.getBufferDataKey(threadId);
 
@@ -308,6 +350,7 @@ export class RedisBufferMessage extends EventEmitter {
         const exists = await this.redis.exists(bufferKey);
         if (exists) {
           await this.redis.setex(bufferKey, 4, threadId);
+          logger.debug({ threadId }, "Buffer TTL set to 4s for flush");
         }
       } else {
         await this.redis.set(activityStatusKey, status, "EX", 15);
@@ -324,10 +367,10 @@ export class RedisBufferMessage extends EventEmitter {
         }
       }
 
-      console.log(`User activity status set for thread ${threadId}: ${status}`);
+      logger.info({ threadId, status }, "User activity status set");
     } catch (error) {
-      console.error(
-        { component: "RedisBufferMessage", threadId, status, error },
+      logger.error(
+        { threadId, status, error },
         "Failed to set user activity status",
       );
       throw error;

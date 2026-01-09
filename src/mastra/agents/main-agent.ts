@@ -22,9 +22,14 @@ export const mainAgent = new Agent({
       lastMessages: 10,
       workingMemory: {
         enabled: true,
-        scope: "resource",
+        scope: "thread",
         template: `# User Profile
           - **Name**:
+
+          ## Current Context
+          - **Topic being discussed**:
+          - **Current step / phase**:
+          - **Summary**:
         `,
       },
     },

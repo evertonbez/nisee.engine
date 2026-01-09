@@ -1,6 +1,9 @@
 import { Redis } from "ioredis";
 import { redisConnection } from "../cache/redis";
 import { generateId } from "../../utils/id";
+import { baseLogger } from "../../observability/logger";
+
+const logger = baseLogger.child({ component: "RedisThreadManager" });
 
 interface ThreadData {
   threadId: string;
@@ -33,16 +36,24 @@ export class RedisThreadManager {
    */
   async getThread(agentId: string, sender: string): Promise<ThreadData | null> {
     const threadKey = this.getThreadKey(agentId, sender);
+    logger.debug({ agentId, sender, threadKey }, "Getting thread");
+
     const data = await this.redis.get(threadKey);
 
     if (!data) {
+      logger.debug({ agentId, sender }, "Thread not found");
       return null;
     }
 
     try {
-      return JSON.parse(data);
+      const threadData = JSON.parse(data);
+      logger.debug(
+        { agentId, sender, threadId: threadData.threadId },
+        "Thread found",
+      );
+      return threadData;
     } catch (error) {
-      console.error("Failed to parse thread data", { agentId, sender, error });
+      logger.error({ agentId, sender, error }, "Failed to parse thread data");
       return null;
     }
   }
@@ -57,6 +68,8 @@ export class RedisThreadManager {
     sender: string,
     lid?: string,
   ): Promise<string> {
+    logger.debug({ agentId, sender, lid }, "Getting or creating thread");
+
     const threadKey = this.getThreadKey(agentId, sender);
     const existingThread = await this.getThread(agentId, sender);
 
@@ -72,6 +85,11 @@ export class RedisThreadManager {
         JSON.stringify(existingThread),
       );
 
+      logger.info(
+        { agentId, sender, threadId: existingThread.threadId, lid },
+        "Thread updated",
+      );
+
       // Se forneceu lid, atualiza o mapeamento
       if (lid) {
         const lidMappingKey = this.getLidMappingKey(agentId, lid);
@@ -79,6 +97,10 @@ export class RedisThreadManager {
           lidMappingKey,
           this.THREAD_TTL_SECONDS,
           existingThread.threadId,
+        );
+        logger.debug(
+          { agentId, lid, threadId: existingThread.threadId },
+          "LID mapping updated",
         );
       }
 
@@ -101,10 +123,16 @@ export class RedisThreadManager {
       JSON.stringify(threadData),
     );
 
+    logger.info(
+      { agentId, sender, threadId, lid, ttlSeconds: this.THREAD_TTL_SECONDS },
+      "New thread created",
+    );
+
     // Se forneceu lid, cria o mapeamento
     if (lid) {
       const lidMappingKey = this.getLidMappingKey(agentId, lid);
       await this.redis.setex(lidMappingKey, this.THREAD_TTL_SECONDS, threadId);
+      logger.debug({ agentId, lid, threadId }, "LID mapping created");
     }
 
     return threadId;
@@ -114,8 +142,17 @@ export class RedisThreadManager {
    * Busca o threadId através do LID
    */
   async getThreadIdByLid(agentId: string, lid: string): Promise<string | null> {
+    logger.debug({ agentId, lid }, "Getting threadId by LID");
+
     const lidMappingKey = this.getLidMappingKey(agentId, lid);
     const threadId = await this.redis.get(lidMappingKey);
+
+    if (threadId) {
+      logger.debug({ agentId, lid, threadId }, "ThreadId found by LID");
+    } else {
+      logger.debug({ agentId, lid }, "ThreadId not found by LID");
+    }
+
     return threadId;
   }
 

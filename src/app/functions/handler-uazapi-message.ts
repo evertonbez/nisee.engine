@@ -4,6 +4,9 @@ import { getAgentById } from "./get-agent-by-id";
 import { getOrCreateContact } from "./get-or-create-contact";
 import { createHash } from "node:crypto";
 import { redisThreadManager } from "../thread/redis-thread";
+import { baseLogger } from "../../observability/logger";
+
+const logger = baseLogger.child({ component: "HandlerUazapiMessage" });
 
 interface HandlerMessageUazapiInput {
   agentId: string;
@@ -32,9 +35,24 @@ interface Output {
 export const handlerUazapiMessage = async (
   payload: HandlerMessageUazapiInput,
 ): Promise<Output> => {
+  logger.info(
+    {
+      agentId: payload.agentId,
+      sender: payload.sender,
+      lid: payload.lid,
+      messageId: payload.message.id,
+      mediaType: payload.message.mediaType,
+    },
+    "Processing message",
+  );
+
   const agentResult = await getAgentById(payload.agentId);
 
   if (agentResult.isErr()) {
+    logger.error(
+      { agentId: payload.agentId, error: agentResult.error },
+      "Failed to get agent",
+    );
     return {
       message: agentResult.error.message,
       status: 1,
@@ -44,6 +62,7 @@ export const handlerUazapiMessage = async (
   const agent = agentResult.value;
 
   if (!agent) {
+    logger.warn({ agentId: payload.agentId }, "Agent not found");
     return {
       message: "Agent not found",
       status: 0,
@@ -51,11 +70,17 @@ export const handlerUazapiMessage = async (
   }
 
   if (agent.active === false) {
+    logger.warn({ agentId: payload.agentId }, "Agent is inactive");
     return {
       message: "Agent is inactive",
       status: 0,
     };
   }
+
+  logger.debug(
+    { agentId: payload.agentId, agentName: agent.name },
+    "Agent found and active",
+  );
 
   const contactId = createHash("sha1")
     .update(`${payload.agentId}_${payload.sender}`)
@@ -69,6 +94,14 @@ export const handlerUazapiMessage = async (
   });
 
   if (contactResult.isErr()) {
+    logger.error(
+      {
+        agentId: payload.agentId,
+        sender: payload.sender,
+        error: contactResult.error,
+      },
+      "Failed to get or create contact",
+    );
     return {
       message: contactResult.error.message,
       status: 0,
@@ -78,6 +111,10 @@ export const handlerUazapiMessage = async (
   const contact = contactResult.value;
 
   if (!contact) {
+    logger.error(
+      { agentId: payload.agentId, sender: payload.sender },
+      "Contact error",
+    );
     return {
       message: "Contact error",
       status: 4,
@@ -85,11 +122,25 @@ export const handlerUazapiMessage = async (
   }
 
   if (contact.active === false) {
+    logger.warn(
+      { agentId: payload.agentId, sender: payload.sender, contactId },
+      "Contact is inactive",
+    );
     return {
       message: "Contact is inactive",
       status: 0,
     };
   }
+
+  logger.debug(
+    {
+      agentId: payload.agentId,
+      sender: payload.sender,
+      contactId,
+      contactName: contact.name,
+    },
+    "Contact found and active",
+  );
 
   const { message, token, lid } = payload;
 
@@ -100,8 +151,14 @@ export const handlerUazapiMessage = async (
     lid,
   );
 
+  logger.debug(
+    { agentId: payload.agentId, sender: payload.sender, threadId, lid },
+    "Thread obtained",
+  );
+
   // Define status como "paused" imediatamente ao receber mensagem
   await bufferMessageService.setUserActivityStatus(threadId, "paused");
+  logger.debug({ threadId }, "User activity status set to paused");
 
   bufferMessageService.addMessage(
     threadId,
@@ -118,7 +175,18 @@ export const handlerUazapiMessage = async (
         token,
       },
     },
-    2000,
+    3000,
+  );
+
+  logger.info(
+    {
+      agentId: payload.agentId,
+      sender: payload.sender,
+      threadId,
+      messageId: message.id,
+      mediaType: message.mediaType,
+    },
+    "Message handled successfully",
   );
 
   return {
