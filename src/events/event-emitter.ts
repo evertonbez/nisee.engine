@@ -1,11 +1,10 @@
 import EM from "node:events";
 import { TypedEventEmitter } from "../utils/event";
-
-// import type { MessagesEvents } from "@worker/listeners/on-received-message";
+import { EventsType } from "../listeners";
 
 class EventEmitterClass extends EM {}
 
-type EventEmitterEvents = {};
+type EventEmitterEvents = EventsType & {};
 
 const eventEmitter =
   new EventEmitterClass() as TypedEventEmitter<EventEmitterEvents>;

@@ -8,6 +8,13 @@
       "when": 1767705536921,
       "tag": "0000_secret_rictor",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1768008332518,
+      "tag": "0001_sturdy_doctor_octopus",
+      "breakpoints": true
     }
   ]
 }

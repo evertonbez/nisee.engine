@@ -3,6 +3,7 @@ import { AgentRuntime, mainAgent } from "../../mastra/agents/main-agent";
 import { FlushEvent } from "../message/buffer";
 import { UazapiApi } from "../../sdks/uazapi/uazapi-api";
 import { baseLogger } from "../../observability/logger";
+import { eventEmitter } from "../../events/event-emitter";
 
 const logger = baseLogger.child({ component: "TaskFlushMessage" });
 
@@ -88,6 +89,10 @@ export const taskFlushMessage = async (payload: FlushEvent): Promise<any> => {
     },
   });
 
+  const totalTokens = response.totalUsage.totalTokens || 0;
+  const totalCost =
+    (response?.providerMetadata?.openrouter?.usage as any).cost || 0;
+
   logger.info(
     {
       threadId: payload.threadId,
@@ -95,6 +100,13 @@ export const taskFlushMessage = async (payload: FlushEvent): Promise<any> => {
     },
     "AI response generated",
   );
+
+  eventEmitter.emit("onRegisterUsage", {
+    agentId: agent.id,
+    model: agent.llm?.model || "unknown",
+    totalTokens,
+    totalCost,
+  });
 
   const uazapiApi = new UazapiApi({
     baseUrl: process.env.UAZAPI_BASE_URL!,
