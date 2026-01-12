@@ -19,7 +19,7 @@ interface BufferData {
   awaitingUserInput?: boolean;
 }
 
-export type UserActivityStatus = "typing" | "recording" | "paused";
+export type UserActivityStatus = "await" | "ready";
 
 interface Metadata {
   agent: Agent;
@@ -219,7 +219,7 @@ export class RedisBufferMessage extends EventEmitter {
 
         // Renova o TTL do buffer para manter as mensagens
         const defaultTtlMs = 10000;
-        const ttlSeconds = Math.ceil(defaultTtlMs / 1000) + 2;
+        const ttlSeconds = Math.ceil(defaultTtlMs / 1000);
         await this.redis.setex(bufferKey, ttlSeconds, threadId);
 
         return;
@@ -332,7 +332,7 @@ export class RedisBufferMessage extends EventEmitter {
     const bufferDataKey = this.getBufferDataKey(threadId);
 
     try {
-      if (status === "paused") {
+      if (status === "ready") {
         await this.redis.del(activityStatusKey);
 
         const existingBuffer = await this.getBufferData(threadId);

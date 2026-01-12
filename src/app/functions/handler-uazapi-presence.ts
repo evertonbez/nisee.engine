@@ -38,19 +38,17 @@ export async function handlerUazapiPresence(
     // Mapeia o estado do WhatsApp para o status de atividade do buffer
     if (state === "composing") {
       // Usuário está digitando - trava o buffer
-      await bufferMessageService.setUserActivityStatus(threadId, "typing");
+      await bufferMessageService.setUserActivityStatus(threadId, "await");
       logger.info({ threadId, agentId, lid }, "Buffer locked - user is typing");
     } else if (state === "recording") {
       // Usuário está gravando áudio - trava o buffer
-      await bufferMessageService.setUserActivityStatus(threadId, "recording");
+      await bufferMessageService.setUserActivityStatus(threadId, "await");
       logger.info(
         { threadId, agentId, lid },
         "Buffer locked - user is recording",
       );
     } else if (state === "paused" || state === "available") {
-      // Usuário parou de digitar/gravar - reativa o buffer com delay de 3 segundos
-
-      await bufferMessageService.setUserActivityStatus(threadId, "paused");
+      await bufferMessageService.setUserActivityStatus(threadId, "ready");
       logger.info({ threadId, agentId, lid }, "Buffer unlocked - user paused");
     }
 
