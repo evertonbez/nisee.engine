@@ -1,8 +1,8 @@
-name: Api Deploy
+name: Engine Deploy
 
 on:
   push:
-    branches: [bak]
+    branches: [master]
     paths:
       - "src/**"
       - ".github/workflows/deploy.yml"
